@@ -113,6 +113,10 @@ class EmbeddingConfig(BaseModel):
         default="sentence-transformers/all-MiniLM-L6-v2",
         description="Name of the embedding model to use"
     )
+    device: str = Field(
+        default="cpu",
+        description="Device to run embeddings on (cpu/cuda/mps)"
+    )
     batch_size: int = Field(
         default=32,
         ge=1,

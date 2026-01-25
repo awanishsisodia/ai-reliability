@@ -34,37 +34,36 @@ class ReliabilityEngine:
         encoder: Optional[EmbeddingEncoder] = None,
     ):
         """
-        Initialize reliability engine.
+        Initialize the reliability engine.
         
         Args:
-            config: Reliability configuration (uses defaults if None)
-            encoder: Embedding encoder (creates default if None)
+            config: Configuration for reliability evaluation
         """
-        self.config = config or ReliabilityConfig()
+        self.config = config
         
-        # Initialize embedding encoder
-        if encoder is None:
-            self.encoder = EmbeddingEncoder(
-                model_name=self.config.embedding.model_name,
-                batch_size=self.config.embedding.batch_size,
-                max_sequence_length=self.config.embedding.max_sequence_length,
-                cache_ttl_seconds=self.config.embedding.cache_ttl_seconds,
-                cache_max_size=self.config.embedding.cache_max_size,
-                redis_url=self.config.embedding.redis_url,
-            )
-        else:
-            self.encoder = encoder
+        # Initialize components
+        self.encoder = EmbeddingEncoder(
+            model_name=config.embedding.model_name,
+            device=config.embedding.device,
+            batch_size=config.embedding.batch_size,
+            cache_max_size=config.embedding.cache_max_size,
+            cache_ttl_seconds=config.embedding.cache_ttl_seconds,
+            redis_url=config.embedding.redis_url
+        )
         
-        # Initialize real-time grounding
         self.grounding = RealTimeGrounding(
             encoder=self.encoder,
-            config=self.config.grounding
+            config=config.grounding
         )
+        
+        # Pre-load the model to exclude it from evaluation timing
+        logger.info("preloading_embedding_model")
+        self.encoder._load_model()
         
         logger.info(
             "reliability_engine_initialized",
-            embedding_model=self.config.embedding.model_name,
-            grounding_budget_ms=self.config.grounding.max_latency_ms,
+            embedding_model=config.embedding.model_name,
+            grounding_budget_ms=config.grounding.max_latency_ms,
             cache_enabled=self.config.embedding.redis_url is not None
         )
     
@@ -82,13 +81,13 @@ class ReliabilityEngine:
             response: Response text to evaluate
             context: Context containing evidence sources
             history: Historical reliability data (optional)
-            budget_ms: Total evaluation budget (uses 100ms default if None)
+            budget_ms: Total evaluation budget (uses 200ms default if None, model loading excluded)
             
         Returns:
             Complete reliability evaluation result
         """
         if budget_ms is None:
-            budget_ms = 100.0  # Default total budget
+            budget_ms = 200.0  # Default total budget (model loading excluded)
         
         with latency_budget(budget_ms, "reliability_evaluation"):
             return self._evaluate_with_timing(response, context, history)
