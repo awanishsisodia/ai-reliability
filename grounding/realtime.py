@@ -10,7 +10,6 @@ from __future__ import annotations
 import numpy as np
 import structlog
 
-# Import using relative imports (correct approach for library code)
 from ..core.config import GroundingConfig
 from ..core.result import ReliabilityDecision, ReliabilityExplanation
 from ..embeddings.encoder import EmbeddingEncoder

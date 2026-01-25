@@ -10,7 +10,6 @@ from typing import List, Tuple
 
 import structlog
 
-# Import using relative imports (correct approach for library code)
 from ..utils.text import (
     extract_claim_like_sentences,
     get_sentence_complexity,

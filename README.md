@@ -99,10 +99,7 @@ PYTHONPATH=. python -m pytest tests/ -v
 cd ai_reliability
 python tests/test_working_basic.py
 
-# For usage from any directory, use the professional test:
-python tests/test_professional.py
-
-# For custom usage in your own scripts, use this professional approach:
+# For usage from any directory, the package needs to be registered:
 import sys
 import os
 import importlib.util
@@ -111,7 +108,7 @@ import importlib.util
 ai_reliability_path = "/path/to/ai_reliability"
 sys.path.insert(0, ai_reliability_path)
 
-# Register the package (required for proper imports)
+# Register the package
 init_file = os.path.join(ai_reliability_path, '__init__.py')
 spec = importlib.util.spec_from_file_location('ai_reliability', init_file)
 module = importlib.util.module_from_spec(spec)
@@ -151,19 +148,13 @@ print(f"Decision: {result.decision.value}")
 print(f"Processing time: {result.processing_time_ms:.2f}ms")
 ```
 
-### Professional Package Structure
+### Package Structure
 
-The AI Reliability Engine follows **Python packaging best practices**:
+The AI Reliability Engine uses relative imports inside the library:
 
-- **Relative imports** inside the library code (correct approach)
-- **Absolute imports** in the main package (to avoid circular dependency)
-- **Proper test organization** in `tests/` directory
-- **Professional package registration** using `importlib.util`
-
-**Package Structure:**
 ```
 ai_reliability/
-├── __init__.py          # Main package with absolute imports
+├── __init__.py          # Main package
 ├── core/
 │   ├── __init__.py      # Relative imports
 │   ├── engine.py        # Relative imports
