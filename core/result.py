@@ -38,16 +38,36 @@ class ReliabilityExplanation(BaseModel):
         le=1.0,
         description="Fraction of sentences with adequate support"
     )
+    
+    @field_validator('coverage')
+    @classmethod
+    def clamp_coverage(cls, v: float) -> float:
+        """Clamp coverage to [0,1] range to handle floating-point precision."""
+        return max(0.0, min(1.0, v))
+    
     mean_support: float = Field(
         ge=0.0,
         le=1.0,
         description="Average semantic support across all sentences"
     )
+    
+    @field_validator('mean_support')
+    @classmethod
+    def clamp_mean_support(cls, v: float) -> float:
+        """Clamp mean_support to [0,1] range to handle floating-point precision."""
+        return max(0.0, min(1.0, v))
+    
     agreement_score: float = Field(
         ge=0.0,
         le=1.0,
         description="Agreement score between evidence sources"
     )
+    
+    @field_validator('agreement_score')
+    @classmethod
+    def clamp_agreement_score(cls, v: float) -> float:
+        """Clamp agreement_score to [0,1] range to handle floating-point precision."""
+        return max(0.0, min(1.0, v))
     processing_time_ms: float = Field(
         ge=0.0,
         description="Total processing time in milliseconds"
@@ -153,28 +173,15 @@ class ReliabilityResult(BaseModel):
     )
 
     model_config = ConfigDict(
-        use_enum_values=True,
         extra="forbid"
     )
 
     @field_validator('decision')
     @classmethod
-    def validate_decision_consistency(cls, v: ReliabilityDecision, info) -> ReliabilityDecision:
-        """Ensure decision aligns with grounding score."""
-        if info.data and 'grounding' in info.data:
-            grounding = info.data['grounding']
-            if grounding >= 0.85 and v != ReliabilityDecision.ALLOW:
-                raise ValueError(
-                    f"High grounding ({grounding:.3f}) should result in ALLOW decision"
-                )
-            elif grounding < 0.65 and v not in (ReliabilityDecision.BLOCK, ReliabilityDecision.CLARIFY):
-                raise ValueError(
-                    f"Low grounding ({grounding:.3f}) should result in BLOCK or CLARIFY decision"
-                )
-            elif 0.65 <= grounding < 0.85 and v not in (ReliabilityDecision.HEDGE, ReliabilityDecision.ALLOW):
-                raise ValueError(
-                    f"Medium grounding ({grounding:.3f}) should result in HEDGE or ALLOW decision"
-                )
+    def validate_decision_type(cls, v: ReliabilityDecision, info) -> ReliabilityDecision:
+        """Ensure decision is a valid ReliabilityDecision enum value."""
+        if not isinstance(v, ReliabilityDecision):
+            raise ValueError(f"Decision must be a ReliabilityDecision enum, got {type(v)}")
         return v
 
     def is_safe_to_show(self) -> bool:

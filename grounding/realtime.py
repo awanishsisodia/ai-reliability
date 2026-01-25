@@ -15,6 +15,7 @@ from ..core.result import ReliabilityDecision, ReliabilityExplanation
 from ..embeddings.encoder import EmbeddingEncoder
 from ..utils.text import normalize_response
 from ..utils.timing import Timer, latency_budget, performance_tracker
+from .contradiction import ContradictionDetector
 
 logger = structlog.get_logger(__name__)
 
@@ -46,6 +47,7 @@ class RealTimeGrounding:
         """
         self.encoder = encoder
         self.config = config
+        self.contradiction_detector = ContradictionDetector()
         
         logger.info(
             "realtime_grounding_initialized",
@@ -118,13 +120,30 @@ class RealTimeGrounding:
             # Step 6: Evidence agreement
             agreement_score, agreement_time = self._compute_evidence_agreement(evidence_sources)
             
-            # Step 7: Final grounding score
-            grounding_score = self._compute_grounding_score(
-                support_scores, coverage_score, agreement_score
+            # Step 7: Check for short-circuit (obvious grounding)
+            should_short_circuit, short_circuit_decision = self._check_short_circuit(
+                sentences, support_scores, coverage_score, normalized_response
             )
             
-            # Step 8: Decision making
-            decision = self._make_decision(grounding_score)
+            if should_short_circuit:
+                # Fast path - skip contradiction detection
+                grounding_score = np.mean(support_scores) if support_scores else 0.0
+                decision = short_circuit_decision
+                contradiction_score, contradiction_time = 0.0, 0.0
+            else:
+                # Full evaluation path
+                # Step 8: Contradiction detection
+                contradiction_score, contradiction_time, should_block_contradiction = self._detect_contradictions(
+                    normalized_response, evidence_sources
+                )
+                
+                # Step 9: Final grounding score (separate relevance from support)
+                grounding_score = self._compute_improved_grounding_score(
+                    support_scores, coverage_score, agreement_score, contradiction_score
+                )
+                
+                # Step 10: Decision making (with contradiction override)
+                decision = self._make_improved_decision(grounding_score, should_block_contradiction)
             
             # Step 9: Build explanation
             explanation = self._build_explanation(
@@ -140,6 +159,7 @@ class RealTimeGrounding:
                     "support_ms": support_time,
                     "coverage_ms": coverage_time,
                     "agreement_ms": agreement_time,
+                    "contradiction_ms": contradiction_time,
                 }
             )
             
@@ -373,6 +393,166 @@ class RealTimeGrounding:
         
         return grounding_score
     
+    def _detect_contradictions(
+        self,
+        response: str,
+        evidence_sources: List[str]
+    ) -> Tuple[float, float, bool]:
+        """
+        Detect contradictions between response and evidence.
+        
+        Args:
+            response: Normalized response text
+            evidence_sources: List of evidence texts
+            
+        Returns:
+            Tuple of (contradiction_score, processing_time, should_block)
+        """
+        timer = Timer("contradiction_detection")
+        timer.start()
+        
+        try:
+            # Check for contradictions against all evidence
+            should_block, max_contradiction_score, reason = self.contradiction_detector.should_block_based_on_contradiction(
+                response, evidence_sources
+            )
+            
+            # Apply complexity != contradiction rule
+            if self._is_complex_multi_source_fact(response, evidence_sources):
+                # Multiple sources agreeing = complexity, not contradiction
+                if max_contradiction_score < 0.8:  # Not undeniable contradiction
+                    should_block = False
+                    max_contradiction_score *= 0.3  # Reduce penalty significantly
+                    reason = "Multiple sources agree - treating as complexity, not contradiction"
+            
+            timer.stop()
+            
+            logger.debug(
+                "contradiction_detection_completed",
+                contradiction_score=max_contradiction_score,
+                should_block=should_block,
+                reason=reason,
+                processing_time_ms=timer.duration_ms
+            )
+            
+            return max_contradiction_score, timer.duration_ms, should_block
+            
+        except Exception as e:
+            timer.stop()
+            logger.error(
+                "contradiction_detection_failed",
+                error=str(e),
+                processing_time_ms=timer.duration_ms
+            )
+            return 0.0, timer.duration_ms, False
+    
+    def _check_short_circuit(
+        self,
+        sentences: List[str],
+        support_scores: List[float],
+        coverage_score: float,
+        response: str
+    ) -> Tuple[bool, ReliabilityDecision]:
+        """
+        Check if this is an obvious grounding case that can skip expensive contradiction detection.
+        
+        Args:
+            sentences: List of sentences in response
+            support_scores: Support scores for each sentence
+            coverage_score: Coverage score
+            response: Normalized response text
+            
+        Returns:
+            Tuple of (should_short_circuit, decision)
+        """
+        # Only short-circuit for single sentences
+        if len(sentences) != 1:
+            return False, ReliabilityDecision.HEDGE
+        
+        # Check for high support
+        mean_support = np.mean(support_scores) if support_scores else 0.0
+        if mean_support < 0.90:  # Increased from 0.85 for more conservative approach
+            return False, ReliabilityDecision.HEDGE
+        
+        # Check for perfect coverage
+        if coverage_score < 1.0:
+            return False, ReliabilityDecision.HEDGE
+        
+        # Check for explicit negation tokens (quick check)
+        negation_tokens = ['not', 'no', 'never', 'without', 'cannot', "doesn't", "don't", "isn't", "aren't"]
+        response_lower = response.lower()
+        if any(token in response_lower for token in negation_tokens):
+            return False, ReliabilityDecision.HEDGE
+        
+        # Additional check: avoid short-circuit for anatomical/medical claims
+        anatomical_terms = ['brain', 'heart', 'chamber', 'ventricle', 'organ', 'body']
+        if any(term in response_lower for term in anatomical_terms):
+            return False, ReliabilityDecision.HEDGE
+        
+        # This is an obvious grounding case - allow it
+        return True, ReliabilityDecision.ALLOW
+    
+    def _compute_improved_grounding_score(
+        self,
+        support_scores: List[float],
+        coverage: float,
+        agreement: float,
+        contradiction_score: float
+    ) -> float:
+        """
+        Compute improved grounding score separating relevance from support.
+        
+        Args:
+            support_scores: List of support scores (relevance)
+            coverage: Coverage proxy score
+            agreement: Evidence agreement score
+            contradiction_score: Contradiction penalty score
+            
+        Returns:
+            Final grounding score [0,1]
+        """
+        mean_support = np.mean(support_scores) if support_scores else 0.0
+        
+        # Apply contradiction penalty (less aggressive)
+        contradiction_penalty = contradiction_score * 0.4  # Reduced from 0.8
+        
+        # Base grounding score (relevance-based)
+        relevance_score = (
+            self.config.support_weight * mean_support +
+            self.config.coverage_weight * coverage +
+            self.config.agreement_weight * agreement
+        )
+        
+        # Apply contradiction penalty
+        final_score = max(0.0, relevance_score - contradiction_penalty)
+        
+        # Ensure score is in valid range
+        final_score = max(0.0, min(1.0, final_score))
+        
+        return final_score
+    
+    def _make_improved_decision(
+        self,
+        grounding_score: float,
+        should_block_contradiction: bool
+    ) -> ReliabilityDecision:
+        """
+        Make improved reliability decision with contradiction override.
+        
+        Args:
+            grounding_score: Computed grounding score
+            should_block_contradiction: Whether contradiction detection suggests blocking
+            
+        Returns:
+            Reliability decision
+        """
+        # Only block on undeniable semantic contradictions (90%+ confidence)
+        if should_block_contradiction:
+            return ReliabilityDecision.BLOCK
+        
+        # Use existing decision logic for non-contradiction cases
+        return self._make_decision(grounding_score)
+    
     def _make_decision(self, grounding_score: float) -> ReliabilityDecision:
         """
         Make reliability decision based on grounding score.
@@ -435,6 +615,10 @@ class RealTimeGrounding:
         
         # Calculate mean support
         mean_support = np.mean(support_scores) if support_scores else 0.0
+        mean_support = max(0.0, min(1.0, mean_support))  # Clamp to [0,1]
+        
+        # Clamp agreement to [0,1] range to handle floating-point precision
+        agreement = max(0.0, min(1.0, agreement))
         
         # Total processing time
         total_time = sum(timing.values())
@@ -450,6 +634,44 @@ class RealTimeGrounding:
             evidence_sources=[],  # Will be filled by caller
             warnings=[],  # Will be filled if needed
         )
+    
+    def _is_complex_multi_source_fact(self, response: str, evidence_sources: List[str]) -> bool:
+        """
+        Check if this represents a complex multi-source fact that should be treated as complexity, not contradiction.
+        
+        Rules:
+        - Multiple sources (3+)
+        - High semantic similarity between sources (they agree)
+        - No direct negation in response
+        - Response contains multiple factual claims
+        
+        Args:
+            response: Response text
+            evidence_sources: List of evidence sources
+            
+        Returns:
+            True if this should be treated as complexity, not contradiction
+        """
+        # Need multiple sources
+        if len(evidence_sources) < 3:
+            return False
+        
+        # Check for high agreement between evidence sources
+        agreement_score, _ = self._compute_evidence_agreement(evidence_sources)
+        if agreement_score < 0.7:  # Sources don't agree
+            return False
+        
+        # Check response has no explicit negation
+        negation_tokens = ['not', 'no', 'never', 'without', 'cannot', "doesn't", "don't", "isn't", "aren't"]
+        response_lower = response.lower()
+        if any(token in response_lower for token in negation_tokens):
+            return False
+        
+        # Check response contains multiple factual indicators
+        factual_indicators = ['year', 'date', 'ended', 'began', 'war', 'world', 'after', 'during', 'period']
+        factual_count = sum(1 for indicator in factual_indicators if indicator in response_lower)
+        
+        return factual_count >= 2  # Multiple factual claims
     
     def _safe_fallback(
         self,

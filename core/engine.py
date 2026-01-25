@@ -139,7 +139,9 @@ class ReliabilityEngine:
                 grounding_score
             )
             
-            # Step 5: Build complete result
+            # Step 5: Stop timer and build complete result
+            total_timer.stop()
+            
             result = self._build_result(
                 response=response,
                 context=context,
@@ -152,8 +154,6 @@ class ReliabilityEngine:
                 grounding_explanation=grounding_explanation,
                 processing_time_ms=total_timer.duration_ms
             )
-            
-            total_timer.stop()
             
             # Record performance metrics
             performance_tracker.record_measurement("reliability_total", total_timer.duration_ms)
@@ -169,13 +169,19 @@ class ReliabilityEngine:
             return result
             
         except Exception as e:
-            total_timer.stop()
+            # Ensure timer is stopped to get duration
+            if total_timer.start_time is not None and total_timer.end_time is None:
+                total_timer.stop()
+            
+            # Handle case where duration_ms might still be None
+            duration_ms = total_timer.duration_ms if total_timer.duration_ms is not None else 0.0
+            
             logger.error(
                 "reliability_evaluation_failed",
                 error=str(e),
-                processing_time_ms=total_timer.duration_ms
+                processing_time_ms=duration_ms
             )
-            return self._safe_fallback(response, context, total_timer.duration_ms)
+            return self._safe_fallback(response, context, duration_ms)
     
     def _compute_consistency(
         self,
