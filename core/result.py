@@ -86,71 +86,75 @@ class ReliabilityExplanation(BaseModel):
 
 
 class ReliabilityResult(BaseModel):
-    """Complete reliability evaluation result."""
+    """Simplified reliability evaluation result.
     
-    # Primary scores
+    Focused on primary reliability score with key supporting metrics.
+    """
+    
+    # Primary score - the main reliability indicator
     score: float = Field(
         ge=0.0,
         le=1.0,
-        description="Overall reliability score [0,1]"
+        description="Overall reliability score [0,1] - primary decision metric"
     )
+    
+    # Key component scores
     grounding: float = Field(
         ge=0.0,
         le=1.0,
-        description="Grounding score [0,1]"
-    )
-    consistency: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Consistency score [0,1]"
+        description="Grounding score [0,1] - evidence support"
     )
     uncertainty: float = Field(
         ge=0.0,
         le=1.0,
-        description="Uncertainty score [0,1], higher = more uncertain"
-    )
-    stability: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Stability score [0,1]"
+        description="Uncertainty score [0,1] - higher = more uncertain"
     )
     
     # Decision and explanation
     decision: ReliabilityDecision = Field(
-        description="Recommended action based on reliability"
+        description="Final reliability decision"
     )
     explanation: ReliabilityExplanation = Field(
-        description="Detailed explanation of the scoring"
+        description="Detailed explanation and evidence"
+    )
+    
+    # Performance metrics
+    processing_time_ms: float = Field(
+        ge=0.0,
+        description="Total processing time in milliseconds"
+    )
+    
+    # Optional detailed scores (for advanced users)
+    consistency: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Consistency score [0,1] - internal coherence"
+    )
+    stability: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Stability score [0,1] - response consistency"
     )
     
     # Metadata
     response_length: int = Field(
         ge=0,
-        description="Length of the evaluated response in characters"
-    )
-    sentence_count: int = Field(
-        ge=0,
-        description="Number of sentences evaluated"
+        description="Length of evaluated response"
     )
     evidence_count: int = Field(
         ge=0,
-        description="Number of evidence items used"
-    )
-    model_version: str = Field(
-        default="0.1.0",
-        description="Version of the reliability model used"
+        description="Number of evidence sources used"
     )
     timestamp: Optional[str] = Field(
         default=None,
         description="ISO timestamp of evaluation"
     )
-    
+
     model_config = ConfigDict(
         use_enum_values=True,
-        extra="forbid",
-        json_encoders={
-            ReliabilityDecision: lambda v: v.value
-        }
+        extra="forbid"
     )
 
     @field_validator('decision')

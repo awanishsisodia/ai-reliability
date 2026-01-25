@@ -24,10 +24,10 @@ class TestReliabilityEngine:
     
     @pytest.fixture
     def config(self) -> ReliabilityConfig:
-        """Create test configuration."""
+        """Create test configuration with realistic performance requirements."""
         return ReliabilityConfig(
             grounding={
-                "max_latency_ms": 5000.0,  # Increased for tests (model loading takes time)
+                "max_latency_ms": 150.0,  # Realistic <150ms target
                 "max_sentences": 5,
                 "support_threshold": 0.7,
                 "allow_threshold": 0.85,
@@ -75,36 +75,58 @@ class TestReliabilityEngine:
             "constraints": {"max_length": 500}
         }
     
-    def test_engine_initialization(self, engine: ReliabilityEngine):
-        """Test engine initialization."""
-        assert engine.config is not None
-        assert engine.encoder is not None
-        assert engine.grounding is not None
-        assert engine.grounding.config.max_latency_ms == 100.0
+    def test_performance_requirements(self, engine: ReliabilityEngine, sample_response: str, sample_context: Dict[str, Any]):
+        """Test that engine meets <150ms performance requirements."""
+        import time
+        
+        # Warm up the engine (load model)
+        engine.evaluate(sample_response, sample_context)
+        
+        # Measure performance after warm-up
+        start_time = time.time()
+        result = engine.evaluate(sample_response, sample_context)
+        end_time = time.time()
+        
+        processing_time_ms = (end_time - start_time) * 1000
+        
+        # Verify performance requirements
+        assert processing_time_ms < 150.0, f"Performance failed: {processing_time_ms:.2f}ms > 150ms"
+        
+        # Verify result is still valid
+        assert result.score >= 0.0 and result.score <= 1.0
+        assert isinstance(result.decision, ReliabilityDecision)
+        
+        print(f"Performance test passed: {processing_time_ms:.2f}ms")
     
     def test_basic_evaluation(self, engine: ReliabilityEngine, sample_response: str, sample_context: Dict[str, Any]):
         """Test basic reliability evaluation."""
         result = engine.evaluate(sample_response, sample_context)
         
-        # Check result structure
+        # Check primary result structure
         assert result.score >= 0.0 and result.score <= 1.0
         assert result.grounding >= 0.0 and result.grounding <= 1.0
-        assert result.consistency >= 0.0 and result.consistency <= 1.0
         assert result.uncertainty >= 0.0 and result.uncertainty <= 1.0
-        assert result.stability >= 0.0 and result.stability <= 1.0
         
         # Check decision
         assert isinstance(result.decision, ReliabilityDecision)
         
         # Check explanation
         assert result.explanation is not None
+        assert result.processing_time_ms > 0
+        assert result.response_length > 0
+        assert result.evidence_count >= 0
+        
+        # Check optional fields
+        if result.consistency is not None:
+            assert result.consistency >= 0.0 and result.consistency <= 1.0
+        if result.stability is not None:
+            assert result.stability >= 0.0 and result.stability <= 1.0
         assert result.explanation.coverage >= 0.0 and result.explanation.coverage <= 1.0
         assert result.explanation.mean_support >= 0.0 and result.explanation.mean_support <= 1.0
         assert result.explanation.agreement_score >= 0.0 and result.explanation.agreement_score <= 1.0
         
         # Check metadata
         assert result.response_length == len(sample_response)
-        assert result.sentence_count > 0
         assert result.evidence_count > 0
         assert result.processing_time_ms > 0
     

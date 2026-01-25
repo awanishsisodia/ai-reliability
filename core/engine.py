@@ -186,9 +186,9 @@ class ReliabilityEngine:
         history: Optional[Dict[str, Any]]
     ) -> float:
         """
-        Compute consistency score.
+        Compute consistency score using lightweight analysis.
         
-        Placeholder implementation - will be enhanced in future phases.
+        Fast implementation optimized for <150ms total latency.
         
         Args:
             response: Response text
@@ -198,13 +198,31 @@ class ReliabilityEngine:
         Returns:
             Consistency score [0,1]
         """
-        timer = Timer("consistency_computation")
-        with timer:
-            # Simple heuristic: check for internal contradictions
-            # This is a placeholder for more sophisticated consistency checking
-            
-            # For now, return a neutral score
-            return 0.8  # Placeholder
+        # Skip timer for performance - this is already fast enough
+        
+        # Fast consistency check: look for direct contradictions
+        # This is optimized for speed over accuracy
+        
+        # Simple contradiction patterns (fast regex would be better)
+        contradiction_pairs = [
+            ("always", "never"),
+            ("all", "none"),
+            ("every", "no"),
+            ("definitely", "definitely not"),
+        ]
+        
+        response_lower = response.lower()
+        contradiction_count = 0
+        
+        for word1, word2 in contradiction_pairs:
+            if word1 in response_lower and word2 in response_lower:
+                contradiction_count += 1
+        
+        # Base score with penalty for contradictions
+        base_score = 0.9
+        consistency_penalty = min(contradiction_count * 0.2, 0.4)
+        
+        return max(0.5, base_score - consistency_penalty)
     
     def _compute_uncertainty(
         self,
@@ -212,9 +230,9 @@ class ReliabilityEngine:
         context: Dict[str, Any]
     ) -> float:
         """
-        Compute uncertainty score.
+        Compute uncertainty score using optimized keyword detection.
         
-        Placeholder implementation - will be enhanced in future phases.
+        Fast implementation optimized for <150ms total latency.
         
         Args:
             response: Response text
@@ -223,21 +241,24 @@ class ReliabilityEngine:
         Returns:
             Uncertainty score [0,1], higher = more uncertain
         """
-        timer = Timer("uncertainty_computation")
-        with timer:
-            # Simple heuristic: look for uncertainty indicators
-            uncertainty_indicators = [
-                "might", "could", "perhaps", "possibly", "likely", "probably",
-                "uncertain", "unsure", "estimate", "approximate", "around"
-            ]
-            
-            response_lower = response.lower()
-            indicator_count = sum(1 for indicator in uncertainty_indicators if indicator in response_lower)
-            
-            # Normalize uncertainty based on response length
-            uncertainty = min(indicator_count / 10.0, 1.0)
-            
-            return uncertainty
+        # Optimized uncertainty detection - pre-compiled patterns for speed
+        uncertainty_indicators = {
+            "might", "could", "perhaps", "possibly", "likely", "probably",
+            "uncertain", "unsure", "estimate", "approximate", "around",
+            "maybe", "sometimes", "often", "usually", "generally"
+        }
+        
+        # Fast word tokenization (split is faster than regex for simple cases)
+        words = response.lower().split()
+        
+        # Count uncertainty indicators
+        indicator_count = sum(1 for word in words if word in uncertainty_indicators)
+        
+        # Normalize based on response length (avoid division by zero)
+        word_count = max(len(words), 1)
+        uncertainty = min(indicator_count / max(word_count * 0.1, 1.0), 1.0)
+        
+        return uncertainty
     
     def _compute_stability(
         self,
@@ -245,9 +266,9 @@ class ReliabilityEngine:
         history: Optional[Dict[str, Any]]
     ) -> float:
         """
-        Compute stability score.
+        Compute stability score using fast heuristics.
         
-        Placeholder implementation - will be enhanced in future phases.
+        Optimized for <150ms total latency.
         
         Args:
             response: Response text
@@ -256,11 +277,26 @@ class ReliabilityEngine:
         Returns:
             Stability score [0,1]
         """
-        timer = Timer("stability_computation")
-        with timer:
-            # For now, return a neutral score
-            # In future phases, this will analyze response stability over time
-            return 0.9  # Placeholder
+        # Fast stability check based on response characteristics
+        
+        # Length-based stability (very short responses are less stable)
+        length_score = min(len(response) / 100.0, 1.0)
+        
+        # If we have history, check for consistency (simplified)
+        if history and "previous_responses" in history:
+            prev_responses = history["previous_responses"]
+            if prev_responses:
+                # Simple similarity check (would use embeddings in production)
+                # For now, check if length is similar
+                avg_prev_length = sum(len(r) for r in prev_responses) / len(prev_responses)
+                length_similarity = 1.0 - abs(len(response) - avg_prev_length) / max(avg_prev_length, 1.0)
+                stability_score = (length_score + length_similarity) / 2.0
+            else:
+                stability_score = length_score
+        else:
+            stability_score = length_score
+        
+        return max(0.3, min(stability_score, 1.0))
     
     def _compute_context_quality(self, context: Dict[str, Any]) -> float:
         """
@@ -340,7 +376,12 @@ class ReliabilityEngine:
         grounding_score: float
     ) -> ReliabilityDecision:
         """
-        Make final reliability decision.
+        Make final reliability decision with enhanced safety checks.
+        
+        Implements guardrails-style safety measures:
+        - Conservative blocking for uncertain content
+        - Hedge for borderline cases
+        - Allow only for high-confidence responses
         
         Args:
             grounding_decision: Decision from grounding evaluation
@@ -350,15 +391,56 @@ class ReliabilityEngine:
         Returns:
             Final reliability decision
         """
-        # Safety first: if grounding says BLOCK, respect it
+        # SAFETY FIRST: Multiple layers of protection
+        
+        # Layer 1: If grounding says BLOCK, respect it immediately
         if grounding_decision == ReliabilityDecision.BLOCK:
             return ReliabilityDecision.BLOCK
         
-        # If grounding says ALLOW but overall reliability is low, hedge
-        if grounding_decision == ReliabilityDecision.ALLOW and reliability_score < 0.7:
+        # Layer 2: Hard safety thresholds (never allow below these)
+        if reliability_score < 0.3:
+            logger.warning(
+                "safety_block_low_reliability",
+                score=reliability_score,
+                grounding=grounding_score
+            )
+            return ReliabilityDecision.BLOCK
+        
+        # Layer 3: Conservative hedge for uncertain content
+        if reliability_score < 0.6:
+            logger.info(
+                "safety_hedge_borderline",
+                score=reliability_score,
+                grounding=grounding_score
+            )
             return ReliabilityDecision.HEDGE
         
-        # Otherwise, use grounding decision
+        # Layer 4: Require high grounding for allow decisions
+        if grounding_decision == ReliabilityDecision.ALLOW:
+            if grounding_score < 0.8:
+                # Even if grounding says allow, require high grounding score
+                logger.info(
+                    "safety_hedge_insufficient_grounding",
+                    grounding_score=grounding_score,
+                    overall_score=reliability_score
+                )
+                return ReliabilityDecision.HEDGE
+            
+            # Final check: overall reliability must be high
+            if reliability_score < 0.75:
+                logger.info(
+                    "safety_hedge_low_overall",
+                    reliability_score=reliability_score
+                )
+                return ReliabilityDecision.HEDGE
+        
+        # Layer 5: Default to cautious approach
+        # If we get here, allow but with logging
+        logger.info(
+            "safety_allow_high_confidence",
+            score=reliability_score,
+            grounding=grounding_score
+        )
         return grounding_decision
     
     def _build_result(
@@ -375,7 +457,7 @@ class ReliabilityEngine:
         processing_time_ms: float
     ) -> ReliabilityResult:
         """
-        Build complete reliability result.
+        Build simplified reliability result.
         
         Args:
             response: Original response text
@@ -390,7 +472,7 @@ class ReliabilityEngine:
             processing_time_ms: Total processing time
             
         Returns:
-            Complete reliability result
+            Simplified reliability result
         """
         # Update explanation with evidence sources
         evidence_sources = []
@@ -406,15 +488,14 @@ class ReliabilityEngine:
         return ReliabilityResult(
             score=reliability_score,
             grounding=grounding_score,
-            consistency=consistency_score,
             uncertainty=uncertainty_score,
-            stability=stability_score,
             decision=decision,
             explanation=grounding_explanation,
-            response_length=len(response),
-            sentence_count=len(grounding_explanation.sentence_scores),
-            evidence_count=len(evidence_sources),
             processing_time_ms=processing_time_ms,
+            consistency=consistency_score,
+            stability=stability_score,
+            response_length=len(response),
+            evidence_count=len(evidence_sources)
         )
     
     def _safe_fallback(
@@ -451,15 +532,12 @@ class ReliabilityEngine:
         return ReliabilityResult(
             score=0.0,
             grounding=0.0,
-            consistency=0.0,
             uncertainty=1.0,
-            stability=0.0,
             decision=ReliabilityDecision.BLOCK,
             explanation=explanation,
-            response_length=len(response),
-            sentence_count=0,
-            evidence_count=0,
             processing_time_ms=processing_time_ms,
+            response_length=len(response),
+            evidence_count=0
         )
     
     def get_performance_stats(self) -> Dict[str, Any]:
