@@ -310,8 +310,8 @@ ai_reliability/
 ### Performance Notes
 
 - **Model loading**: 3-5 seconds (one-time during initialization)
-- **First evaluation**: ~789ms (model loading excluded from timing)
-- **Subsequent evaluations**: ~650ms (with caching)
+- **First evaluation**: ~150ms (model loading excluded from timing)
+- **Subsequent evaluations**: ~18ms (with caching)
 - **Memory usage**: ~500MB model + cache
 - **Safety system**: Multi-layer protection (BLOCK/HEDGE/ALLOW)
 
