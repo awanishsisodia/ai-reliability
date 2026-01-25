@@ -12,27 +12,7 @@ This package provides:
 __version__ = "0.2.0"
 __author__ = "AI Reliability Team"
 
-# Auto-register the package for proper imports
-import sys
-import os
-
-# Only register if not already registered
-if 'ai_reliability' not in sys.modules:
-    # Get the package directory
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # Add to sys.path if not already there
-    if current_dir not in sys.path:
-        sys.path.insert(0, current_dir)
-    
-    # Register the module
-    import importlib.util
-    spec = importlib.util.spec_from_file_location('ai_reliability', __file__)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules['ai_reliability'] = module
-    spec.loader.exec_module(module)
-
-# Import from core modules using absolute imports
+# Import using absolute imports for the main package (to avoid circular dependency)
 from ai_reliability.core.engine import ReliabilityEngine
 from ai_reliability.core.result import ReliabilityResult, ReliabilityDecision
 

@@ -14,8 +14,7 @@ import structlog
 import torch
 from sentence_transformers import SentenceTransformer
 
-# Import using absolute imports
-from ai_reliability.embeddings.cache import EmbeddingCache
+from .cache import EmbeddingCache
 
 logger = structlog.get_logger(__name__)
 

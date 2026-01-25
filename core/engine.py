@@ -11,12 +11,11 @@ from typing import Any, Dict, Optional
 
 import structlog
 
-# Import using absolute imports
-from ai_reliability.core.config import ReliabilityConfig
-from ai_reliability.core.result import ReliabilityDecision, ReliabilityResult, ReliabilityExplanation
-from ai_reliability.embeddings.encoder import EmbeddingEncoder
-from ai_reliability.grounding.realtime import RealTimeGrounding
-from ai_reliability.utils.timing import Timer, latency_budget, performance_tracker
+from .config import ReliabilityConfig
+from .result import ReliabilityDecision, ReliabilityResult, ReliabilityExplanation
+from ..embeddings.encoder import EmbeddingEncoder
+from ..grounding.realtime import RealTimeGrounding
+from ..utils.timing import Timer, latency_budget, performance_tracker
 
 logger = structlog.get_logger(__name__)
 

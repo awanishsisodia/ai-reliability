@@ -10,12 +10,12 @@ from __future__ import annotations
 import numpy as np
 import structlog
 
-# Import using absolute imports
-from ai_reliability.core.config import GroundingConfig
-from ai_reliability.core.result import ReliabilityDecision, ReliabilityExplanation
-from ai_reliability.embeddings.encoder import EmbeddingEncoder
-from ai_reliability.utils.text import normalize_response
-from ai_reliability.utils.timing import Timer, latency_budget, performance_tracker
+# Import using relative imports (correct approach for library code)
+from ..core.config import GroundingConfig
+from ..core.result import ReliabilityDecision, ReliabilityExplanation
+from ..embeddings.encoder import EmbeddingEncoder
+from ..utils.text import normalize_response
+from ..utils.timing import Timer, latency_budget, performance_tracker
 
 logger = structlog.get_logger(__name__)
 
@@ -235,7 +235,7 @@ class RealTimeGrounding:
         Returns:
             Tuple of (sentences, sentence_metadata, processing_time_ms)
         """
-        from ai_reliability.grounding.decomposition import SentenceDecomposer
+        from .decomposition import SentenceDecomposer
         
         timer = Timer("segmentation")
         timer.start()

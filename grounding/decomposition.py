@@ -10,13 +10,14 @@ from typing import List, Tuple
 
 import structlog
 
-from ai_reliability.utils.text import (
+# Import using relative imports (correct approach for library code)
+from ..utils.text import (
     extract_claim_like_sentences,
     get_sentence_complexity,
     is_question,
     split_into_sentences,
 )
-from ai_reliability.utils.timing import Timer, latency_budget
+from ..utils.timing import Timer, latency_budget
 
 logger = structlog.get_logger(__name__)
 
