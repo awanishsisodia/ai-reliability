@@ -51,7 +51,7 @@ else:
 ```
 
 ## Architecture
-![architecture](overall.png)
+![architecture](images/overall.png)
 
 ## Quick Start
 
