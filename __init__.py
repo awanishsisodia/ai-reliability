@@ -9,7 +9,7 @@ This package provides:
 - Production-ready API and monitoring
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "AI Reliability Team"
 
 from .core.engine import ReliabilityEngine

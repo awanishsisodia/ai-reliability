@@ -86,6 +86,9 @@ source .venv/bin/activate
 uv pip install -e ".[dev]"
 
 # Run tests to verify installation
+python test_direct.py
+
+# Or run the full test suite (requires fixing imports)
 PYTHONPATH=. python -m pytest tests/ -v
 ```
 
