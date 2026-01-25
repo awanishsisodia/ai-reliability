@@ -1,7 +1,5 @@
 # AI Reliability Engine
 
-A production-grade framework for computing per-response reliability for modern AI systems using real-time grounding + async refinement.
-
 ## Overview
 
 The AI Reliability Engine provides **system-agnostic reliability evaluation** for AI responses through real-time grounding analysis. It computes explainable reliability scores with strict performance requirements, making it suitable for production deployment in safety-critical applications.
@@ -232,144 +230,34 @@ The test suite includes:
 - **Type Safety**: Full mypy compliance
 - **Code Quality**: Black formatting + Ruff linting
 
-## Production Deployment
 
 ### Environment Configuration
 
+Copy the provided `.env.example` file to `.env` and adjust the values:
+
+```bash
+cp .env.example .env
+```
+
+Key environment variables:
+
 ```bash
 # Core configuration
-export AI_RELIABILITY_MAX_LATENCY_MS=50
-export AI_RELIABILITY_SUPPORT_THRESHOLD=0.7
-export AI_RELIABILITY_ALLOW_THRESHOLD=0.85
+AI_RELIABILITY_MAX_LATENCY_MS=50
+AI_RELIABILITY_SUPPORT_THRESHOLD=0.7
+AI_RELIABILITY_ALLOW_THRESHOLD=0.85
 
 # Embedding settings
-export AI_RELIABILITY_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
-export AI_RELIABILITY_REDIS_URL=redis://redis:6379
+AI_RELIABILITY_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+AI_RELIABILITY_REDIS_URL=redis://redis:6379
 
 # Monitoring
-export AI_RELIABILITY_LOG_LEVEL=INFO
-export AI_RELIABILITY_ENABLE_METRICS=true
-export AI_RELIABILITY_METRICS_PORT=9090
+AI_RELIABILITY_LOG_LEVEL=INFO
+AI_RELIABILITY_ENABLE_METRICS=true
+AI_RELIABILITY_METRICS_PORT=9090
 ```
 
-### Docker Deployment
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies
-COPY pyproject.toml .
-RUN pip install uv && \
-    uv pip install --system -e .
-
-# Copy application code
-COPY . .
-
-# Expose metrics port
-EXPOSE 9090
-
-# Run application
-CMD ["python", "your_app.py"]
-```
-
-### Kubernetes Deployment
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ai-reliability
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: ai-reliability
-  template:
-    metadata:
-      labels:
-        app: ai-reliability
-    spec:
-      containers:
-      - name: ai-reliability
-        image: ai-reliability:latest
-        env:
-        - name: AI_RELIABILITY_REDIS_URL
-          value: "redis://redis:6379"
-        - name: AI_RELIABILITY_LOG_LEVEL
-          value: "INFO"
-        resources:
-          requests:
-            memory: "1Gi"
-            cpu: "500m"
-          limits:
-            memory: "2Gi"
-            cpu: "1000m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 5
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: ai-reliability-service
-spec:
-  selector:
-    app: ai-reliability
-  ports:
-  - port: 8000
-    targetPort: 8000
-  type: ClusterIP
-```
-
-### Monitoring and Observability
-
-#### Structured Logging
-
-```python
-import structlog
-from ai_reliability.utils.logging import configure_logging
-
-# Configure structured logging
-configure_logging(log_level="INFO")
-
-# Logs include:
-# - Performance metrics (latency, throughput)
-# - Reliability scores and decisions
-# - Error tracking and stack traces
-# - Cache hit/miss ratios
-# - Model loading statistics
-```
-
-#### Prometheus Metrics
-
-```python
-# Metrics are automatically exposed on port 9090
-# Available metrics:
-# - ai_reliability_evaluations_total
-# - ai_reliability_evaluation_duration_seconds
-# - ai_reliability_cache_hits_total
-# - ai_reliability_cache_misses_total
-# - ai_reliability_model_load_duration_seconds
-```
-
-## API Reference
+See `.env.example` for a complete list of all available configuration options.
 
 ### ReliabilityEngine
 
@@ -490,24 +378,14 @@ PYTHONPATH=. python -m pytest tests/
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
-## Support
+
+## Contact Author
 
 - **Author**: Awanish Kumar
 - **Email**: awanish.sisodia.ai@gmail.com
 - **Issues**: [GitHub Issues](https://github.com/awanishsisodia/ai-reliability/issues)
 - **Documentation**: [Medium Article](https://medium.com/@awanish.sisodia.ai/ai-observability-reliability-engines-146fe8ed1557)
 
-## Acknowledgments
 
-- **Sentence Transformers** for high-quality semantic embeddings
-- **FastAPI** for production-ready API framework
-- **Pydantic** for data validation and serialization
-- **Structlog** for structured logging
-- **Redis** for distributed caching
-- **Prometheus** for metrics collection
-
----
-
-**Built with ❤️ for production AI systems**
