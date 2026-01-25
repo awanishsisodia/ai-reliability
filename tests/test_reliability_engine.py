@@ -7,25 +7,33 @@ with performance benchmarks and edge case handling.
 
 from __future__ import annotations
 
+import sys
+import os
 import time
 from typing import Any, Dict
 
 import pytest
 import pytest_asyncio
 
-from ai_reliability.core.config import ReliabilityConfig
-from ai_reliability.core.engine import ReliabilityEngine
-from ai_reliability.core.result import ReliabilityDecision
-from ai_reliability.embeddings.encoder import EmbeddingEncoder
+# Add parent directory to path for direct imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'core'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'embeddings'))
+
+# Import modules directly
+import config
+import engine
+import result
+import encoder
 
 
 class TestReliabilityEngine:
     """Test suite for ReliabilityEngine."""
     
     @pytest.fixture
-    def config(self) -> ReliabilityConfig:
+    def config(self) -> config.ReliabilityConfig:
         """Create test configuration with realistic performance requirements."""
-        return ReliabilityConfig(
+        return config.ReliabilityConfig(
             grounding={
                 "max_latency_ms": 150.0,  # Realistic <150ms target
                 "max_sentences": 5,
@@ -42,9 +50,9 @@ class TestReliabilityEngine:
         )
     
     @pytest.fixture
-    def encoder(self, config: ReliabilityConfig) -> EmbeddingEncoder:
+    def encoder(self, config: config.ReliabilityConfig) -> encoder.EmbeddingEncoder:
         """Create test embedding encoder."""
-        return EmbeddingEncoder(
+        return encoder.EmbeddingEncoder(
             model_name=config.embedding.model_name,
             batch_size=config.embedding.batch_size,
             cache_ttl_seconds=config.embedding.cache_ttl_seconds,
@@ -52,9 +60,9 @@ class TestReliabilityEngine:
         )
     
     @pytest.fixture
-    def engine(self, config: ReliabilityConfig, encoder: EmbeddingEncoder) -> ReliabilityEngine:
+    def engine(self, config: config.ReliabilityConfig, encoder: encoder.EmbeddingEncoder) -> engine.ReliabilityEngine:
         """Create test reliability engine."""
-        return ReliabilityEngine(config=config, encoder=encoder)
+        return engine.ReliabilityEngine(config=config, encoder=encoder)
     
     @pytest.fixture
     def sample_response(self) -> str:
@@ -75,7 +83,7 @@ class TestReliabilityEngine:
             "constraints": {"max_length": 500}
         }
     
-    def test_performance_requirements(self, engine: ReliabilityEngine, sample_response: str, sample_context: Dict[str, Any]):
+    def test_performance_requirements(self, engine: engine.ReliabilityEngine, sample_response: str, sample_context: Dict[str, Any]):
         """Test that engine meets <150ms performance requirements."""
         import time
         
@@ -94,11 +102,11 @@ class TestReliabilityEngine:
         
         # Verify result is still valid
         assert result.score >= 0.0 and result.score <= 1.0
-        assert isinstance(result.decision, ReliabilityDecision)
+        assert isinstance(result.decision, result.ReliabilityDecision)
         
         print(f"Performance test passed: {processing_time_ms:.2f}ms")
     
-    def test_basic_evaluation(self, engine: ReliabilityEngine, sample_response: str, sample_context: Dict[str, Any]):
+    def test_basic_evaluation(self, engine: engine.ReliabilityEngine, sample_response: str, sample_context: Dict[str, Any]):
         """Test basic reliability evaluation."""
         result = engine.evaluate(sample_response, sample_context)
         
@@ -108,7 +116,7 @@ class TestReliabilityEngine:
         assert result.uncertainty >= 0.0 and result.uncertainty <= 1.0
         
         # Check decision
-        assert isinstance(result.decision, ReliabilityDecision)
+        assert isinstance(result.decision, result.ReliabilityDecision)
         
         # Check explanation
         assert result.explanation is not None
@@ -130,25 +138,25 @@ class TestReliabilityEngine:
         assert result.evidence_count > 0
         assert result.processing_time_ms > 0
     
-    def test_empty_response(self, engine: ReliabilityEngine, sample_context: Dict[str, Any]):
+    def test_empty_response(self, engine: engine.ReliabilityEngine, sample_context: Dict[str, Any]):
         """Test evaluation with empty response."""
         result = engine.evaluate("", sample_context)
         
         # Should handle gracefully
         assert result.score >= 0.0 and result.score <= 1.0
-        assert result.decision in [ReliabilityDecision.BLOCK, ReliabilityDecision.CLARIFY]
+        assert result.decision in [result.ReliabilityDecision.BLOCK, result.ReliabilityDecision.CLARIFY]
         assert result.response_length == 0
     
-    def test_empty_context(self, engine: ReliabilityEngine, sample_response: str):
+    def test_empty_context(self, engine: engine.ReliabilityEngine, sample_response: str):
         """Test evaluation with empty context."""
         result = engine.evaluate(sample_response, {})
         
         # Should handle gracefully but with lower scores
         assert result.score >= 0.0 and result.score <= 1.0
         assert result.evidence_count == 0
-        assert result.decision in [ReliabilityDecision.BLOCK, ReliabilityDecision.CLARIFY]
+        assert result.decision in [result.ReliabilityDecision.BLOCK, result.ReliabilityDecision.CLARIFY]
     
-    def test_long_response_truncation(self, engine: ReliabilityEngine, sample_context: Dict[str, Any]):
+    def test_long_response_truncation(self, engine: engine.ReliabilityEngine, sample_context: Dict[str, Any]):
         """Test handling of very long responses."""
         long_response = "This is a test sentence. " * 1000  # Very long response
         
@@ -158,7 +166,7 @@ class TestReliabilityEngine:
         assert result.score >= 0.0 and result.score <= 1.0
         assert result.response_length <= engine.config.grounding.max_response_length
     
-    def test_performance_requirements(self, engine: ReliabilityEngine, sample_response: str, sample_context: Dict[str, Any]):
+    def test_performance_requirements(self, engine: engine.ReliabilityEngine, sample_response: str, sample_context: Dict[str, Any]):
         """Test performance requirements."""
         start_time = time.time()
         
@@ -174,7 +182,7 @@ class TestReliabilityEngine:
         assert avg_time < 150.0, f"Average evaluation time {avg_time:.2f}ms exceeds 150ms limit"
     
     @pytest.mark.benchmark
-    def test_evaluation_performance_benchmark(self, engine: ReliabilityEngine, sample_response: str, sample_context: Dict[str, Any], benchmark):
+    def test_evaluation_performance_benchmark(self, engine: engine.ReliabilityEngine, sample_response: str, sample_context: Dict[str, Any], benchmark):
         """Benchmark evaluation performance."""
         def evaluate():
             return engine.evaluate(sample_response, sample_context)
@@ -185,7 +193,7 @@ class TestReliabilityEngine:
         assert result.score >= 0.0 and result.score <= 1.0
         assert result.processing_time_ms < 100.0  # Should be fast
     
-    def test_cache_effectiveness(self, engine: ReliabilityEngine, sample_response: str, sample_context: Dict[str, Any]):
+    def test_cache_effectiveness(self, engine: engine.ReliabilityEngine, sample_response: str, sample_context: Dict[str, Any]):
         """Test that caching improves performance."""
         # First evaluation (cache miss)
         start_time = time.time()
@@ -206,20 +214,20 @@ class TestReliabilityEngine:
         # Note: This might not always be true due to system variability, so we just log it
         print(f"First evaluation: {first_time:.2f}ms, Second evaluation: {second_time:.2f}ms")
     
-    def test_different_response_types(self, engine: ReliabilityEngine, sample_context: Dict[str, Any]):
+    def test_different_response_types(self, engine: engine.ReliabilityEngine, sample_context: Dict[str, Any]):
         """Test evaluation of different types of responses."""
         test_cases = [
             # High confidence, well-supported
-            ("Paris is the capital of France. The Eiffel Tower is located there.", ReliabilityDecision.ALLOW),
+            ("Paris is the capital of France. The Eiffel Tower is located there.", result.ReliabilityDecision.ALLOW),
             
             # Medium confidence, some uncertainty
-            ("Paris might be the capital of France, and I think the Eiffel Tower is probably there.", ReliabilityDecision.HEDGE),
+            ("Paris might be the capital of France, and I think the Eiffel Tower is probably there.", result.ReliabilityDecision.HEDGE),
             
             # Low confidence, no support
-            ("The capital of Mars is New York City and it has 10 billion people.", ReliabilityDecision.BLOCK),
+            ("The capital of Mars is New York City and it has 10 billion people.", result.ReliabilityDecision.BLOCK),
             
             # Question (should be handled gracefully)
-            ("What is the capital of France?", ReliabilityDecision.ALLOW),
+            ("What is the capital of France?", result.ReliabilityDecision.ALLOW),
         ]
         
         for response, expected_decision in test_cases:
@@ -227,13 +235,13 @@ class TestReliabilityEngine:
             
             # Verify basic structure
             assert result.score >= 0.0 and result.score <= 1.0
-            assert isinstance(result.decision, ReliabilityDecision)
+            assert isinstance(result.decision, result.ReliabilityDecision)
             
             # Log the actual vs expected for analysis
             print(f"Response: {response[:50]}...")
             print(f"Expected: {expected_decision}, Got: {result.decision}, Score: {result.score:.3f}")
     
-    def test_context_quality_impact(self, engine: ReliabilityEngine):
+    def test_context_quality_impact(self, engine: engine.ReliabilityEngine):
         """Test that context quality affects reliability scores."""
         response = "Paris is the capital of France."
         
@@ -258,7 +266,7 @@ class TestReliabilityEngine:
         print(f"Minimal context: {result_minimal.score:.3f}")
         print(f"Rich context: {result_rich.score:.3f}")
     
-    def test_error_handling(self, engine: ReliabilityEngine):
+    def test_error_handling(self, engine: engine.ReliabilityEngine):
         """Test error handling and graceful degradation."""
         # Test with malformed input
         try:
@@ -269,7 +277,7 @@ class TestReliabilityEngine:
             # If it raises, should be a meaningful error
             assert "failed" in str(e).lower() or "error" in str(e).lower()
     
-    def test_performance_stats(self, engine: ReliabilityEngine, sample_response: str, sample_context: Dict[str, Any]):
+    def test_performance_stats(self, engine: engine.ReliabilityEngine, sample_response: str, sample_context: Dict[str, Any]):
         """Test performance statistics collection."""
         # Run a few evaluations
         for _ in range(5):
@@ -288,7 +296,7 @@ class TestReliabilityEngine:
         assert reliability_stats["min_ms"] > 0
         assert reliability_stats["max_ms"] > 0
     
-    def test_warm_up(self, engine: ReliabilityEngine):
+    def test_warm_up(self, engine: engine.ReliabilityEngine):
         """Test cache warm-up functionality."""
         common_texts = [
             "This is a common test sentence.",
@@ -310,7 +318,7 @@ class TestReliabilityEngineIntegration:
     def test_end_to_end_workflow(self):
         """Test complete end-to-end workflow."""
         # Create engine with default config
-        engine = ReliabilityEngine()
+        engine = engine.ReliabilityEngine()
         
         # Test realistic scenario
         response = "Based on the search results, Apple Inc. is headquartered in Cupertino, California and was founded by Steve Jobs in 1976."
@@ -330,7 +338,7 @@ class TestReliabilityEngineIntegration:
         
         # Verify complete workflow
         assert 0.0 <= result.score <= 1.0
-        assert isinstance(result.decision, ReliabilityDecision)
+        assert isinstance(result.decision, result.ReliabilityDecision)
         assert result.explanation is not None
         assert result.processing_time_ms > 0
         assert result.processing_time_ms < 200.0  # Should be fast

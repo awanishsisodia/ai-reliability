@@ -2,9 +2,10 @@
 Core components of the AI Reliability Engine.
 """
 
-from .result import ReliabilityResult, ReliabilityDecision, ReliabilityExplanation
-from .engine import ReliabilityEngine
-from .config import ReliabilityConfig
+# Import using absolute imports
+from ai_reliability.core.result import ReliabilityResult, ReliabilityDecision, ReliabilityExplanation
+from ai_reliability.core.engine import ReliabilityEngine
+from ai_reliability.core.config import ReliabilityConfig
 
 __all__ = [
     "ReliabilityResult",

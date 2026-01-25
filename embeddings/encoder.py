@@ -7,7 +7,6 @@ batching, and performance optimization for real-time requirements.
 
 from __future__ import annotations
 
-import os
 from typing import List, Optional, Union
 
 import numpy as np
@@ -15,7 +14,8 @@ import structlog
 import torch
 from sentence_transformers import SentenceTransformer
 
-from .cache import EmbeddingCache
+# Import using absolute imports
+from ai_reliability.embeddings.cache import EmbeddingCache
 
 logger = structlog.get_logger(__name__)
 

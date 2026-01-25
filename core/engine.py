@@ -11,11 +11,12 @@ from typing import Any, Dict, Optional
 
 import structlog
 
-from .config import ReliabilityConfig
-from .result import ReliabilityDecision, ReliabilityResult, ReliabilityExplanation
-from ..embeddings.encoder import EmbeddingEncoder
-from ..grounding.realtime import RealTimeGrounding
-from ..utils.timing import Timer, latency_budget, performance_tracker
+# Import using absolute imports
+from ai_reliability.core.config import ReliabilityConfig
+from ai_reliability.core.result import ReliabilityDecision, ReliabilityResult, ReliabilityExplanation
+from ai_reliability.embeddings.encoder import EmbeddingEncoder
+from ai_reliability.grounding.realtime import RealTimeGrounding
+from ai_reliability.utils.timing import Timer, latency_budget, performance_tracker
 
 logger = structlog.get_logger(__name__)
 
@@ -199,9 +200,7 @@ class ReliabilityEngine:
             Consistency score [0,1]
         """
         # Skip timer for performance - this is already fast enough
-        
-        # Fast consistency check: look for direct contradictions
-        # This is optimized for speed over accuracy
+        # Need to implement more sophisticated consistency checking in future version
         
         # Simple contradiction patterns (fast regex would be better)
         contradiction_pairs = [
@@ -232,7 +231,8 @@ class ReliabilityEngine:
         """
         Compute uncertainty score using optimized keyword detection.
         
-        Fast implementation optimized for <150ms total latency.
+        Fast implementation optimized for <150ms total latency. 
+        will be enhanced in future phases.
         
         Args:
             response: Response text

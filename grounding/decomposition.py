@@ -1,8 +1,7 @@
 """
-Sentence decomposition and claim extraction for real-time grounding.
+Response decomposition for the AI Reliability Engine.
 
-This module provides optimized text processing for breaking down responses
-into evaluable units with performance constraints.
+This module provides sentence segmentation and analysis for grounding evaluation.
 """
 
 from __future__ import annotations
@@ -11,13 +10,13 @@ from typing import List, Tuple
 
 import structlog
 
-from ..utils.text import (
+from ai_reliability.utils.text import (
     extract_claim_like_sentences,
     get_sentence_complexity,
     is_question,
     split_into_sentences,
 )
-from ..utils.timing import Timer, latency_budget
+from ai_reliability.utils.timing import Timer, latency_budget
 
 logger = structlog.get_logger(__name__)
 

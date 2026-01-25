@@ -1,22 +1,21 @@
 """
-Real-time grounding implementation for the AI Reliability Engine.
+Real-time grounding evaluation for the AI Reliability Engine.
 
-This module implements the core real-time grounding pipeline with strict
-50ms latency requirements and production-grade error handling.
+This module provides fast, memory-efficient grounding analysis with
+strict latency requirements suitable for production use.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
-
 import numpy as np
 import structlog
 
-from ..core.config import GroundingConfig
-from ..core.result import ReliabilityDecision, ReliabilityExplanation
-from ..embeddings.encoder import EmbeddingEncoder
-from ..utils.text import normalize_response
-from ..utils.timing import Timer, latency_budget, performance_tracker
+# Import using absolute imports
+from ai_reliability.core.config import GroundingConfig
+from ai_reliability.core.result import ReliabilityDecision, ReliabilityExplanation
+from ai_reliability.embeddings.encoder import EmbeddingEncoder
+from ai_reliability.utils.text import normalize_response
+from ai_reliability.utils.timing import Timer, latency_budget, performance_tracker
 
 logger = structlog.get_logger(__name__)
 
@@ -236,7 +235,7 @@ class RealTimeGrounding:
         Returns:
             Tuple of (sentences, sentence_metadata, processing_time_ms)
         """
-        from .decomposition import SentenceDecomposer
+        from ai_reliability.grounding.decomposition import SentenceDecomposer
         
         timer = Timer("segmentation")
         timer.start()
