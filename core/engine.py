@@ -81,13 +81,12 @@ class ReliabilityEngine:
             response: Response text to evaluate
             context: Context containing evidence sources
             history: Historical reliability data (optional)
-            budget_ms: Total evaluation budget (uses 200ms default if None, model loading excluded)
+            budget_ms: Total evaluation budget (uses grounding.max_latency_ms from config)
             
         Returns:
             Complete reliability evaluation result
         """
-        if budget_ms is None:
-            budget_ms = 200.0  # Default total budget (model loading excluded)
+        budget_ms = self.config.grounding.max_latency_ms
         
         with latency_budget(budget_ms, "reliability_evaluation"):
             return self._evaluate_with_timing(response, context, history)

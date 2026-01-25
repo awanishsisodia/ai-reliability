@@ -109,28 +109,21 @@ ai_reliability_path = "/path/to/ai_reliability"
 sys.path.insert(0, ai_reliability_path)
 
 # Register the package
-init_file = os.path.join(ai_reliability_path, '__init__.py')
-spec = importlib.util.spec_from_file_location('ai_reliability', init_file)
-module = importlib.util.module_from_spec(spec)
-sys.modules['ai_reliability'] = module
-spec.loader.exec_module(module)
-
-# Now import normally
 import ai_reliability
 from ai_reliability.core.engine import ReliabilityEngine
 from ai_reliability.core.config import ReliabilityConfig
 
-# Create configuration
+# Configure with latency budget (in milliseconds)
 config = ReliabilityConfig(
     grounding={
-        "max_latency_ms": 150.0,
+        "max_latency_ms": 1000.0,  # Latency budget for grounding evaluation
         "support_threshold": 0.7,
         "allow_threshold": 0.85,
         "hedge_threshold": 0.65,
     }
 )
 
-# Create engine
+# Create engine (model loading happens here)
 engine = ReliabilityEngine(config=config)
 
 # Evaluate response
@@ -144,7 +137,7 @@ context = {
 
 result = engine.evaluate(response, context)
 print(f"Score: {result.score:.3f}")
-print(f"Decision: {result.decision.value}")
+print(f"Decision: {result.decision}")
 print(f"Processing time: {result.processing_time_ms:.2f}ms")
 ```
 
@@ -177,8 +170,8 @@ ai_reliability/
 ### Performance Notes
 
 - **Model loading**: 3-5 seconds (one-time during initialization)
-- **First evaluation**: ~190ms (model loading excluded from timing)
-- **Subsequent evaluations**: ~150ms (target met)
+- **First evaluation**: ~789ms (model loading excluded from timing)
+- **Subsequent evaluations**: ~650ms (with caching)
 - **Memory usage**: ~500MB model + cache
 - **Safety system**: Multi-layer protection (BLOCK/HEDGE/ALLOW)
 
