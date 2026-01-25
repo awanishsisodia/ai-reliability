@@ -388,6 +388,9 @@ The engine evaluates responses through a 6-step real-time grounding process:
 5. **Coverage Proxy**: Calculate evidence coverage
 6. **Evidence Agreement**: Check source consistency
 
+### Architecture
+![architecture](images/realtime.png)
+
 ### Scoring Components
 
 ```python
