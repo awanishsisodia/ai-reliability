@@ -23,8 +23,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'embeddings'))
 # Import modules directly
 import config
 import engine
-import result
 import encoder
+from result import ReliabilityDecision, ReliabilityResult
 
 
 class TestReliabilityEngine:
@@ -102,7 +102,7 @@ class TestReliabilityEngine:
         
         # Verify result is still valid
         assert result.score >= 0.0 and result.score <= 1.0
-        assert isinstance(result.decision, result.ReliabilityDecision)
+        assert isinstance(result.decision, ReliabilityDecision)
         
         print(f"Performance test passed: {processing_time_ms:.2f}ms")
     
@@ -116,7 +116,7 @@ class TestReliabilityEngine:
         assert result.uncertainty >= 0.0 and result.uncertainty <= 1.0
         
         # Check decision
-        assert isinstance(result.decision, result.ReliabilityDecision)
+        assert isinstance(result.decision, ReliabilityDecision)
         
         # Check explanation
         assert result.explanation is not None
@@ -144,7 +144,7 @@ class TestReliabilityEngine:
         
         # Should handle gracefully
         assert result.score >= 0.0 and result.score <= 1.0
-        assert result.decision in [result.ReliabilityDecision.BLOCK, result.ReliabilityDecision.CLARIFY]
+        assert result.decision in [ReliabilityDecision.BLOCK, ReliabilityDecision.CLARIFY]
         assert result.response_length == 0
     
     def test_empty_context(self, engine: engine.ReliabilityEngine, sample_response: str):
@@ -154,7 +154,7 @@ class TestReliabilityEngine:
         # Should handle gracefully but with lower scores
         assert result.score >= 0.0 and result.score <= 1.0
         assert result.evidence_count == 0
-        assert result.decision in [result.ReliabilityDecision.BLOCK, result.ReliabilityDecision.CLARIFY]
+        assert result.decision in [ReliabilityDecision.BLOCK, ReliabilityDecision.CLARIFY]
     
     def test_long_response_truncation(self, engine: engine.ReliabilityEngine, sample_context: Dict[str, Any]):
         """Test handling of very long responses."""
@@ -218,16 +218,16 @@ class TestReliabilityEngine:
         """Test evaluation of different types of responses."""
         test_cases = [
             # High confidence, well-supported
-            ("Paris is the capital of France. The Eiffel Tower is located there.", result.ReliabilityDecision.ALLOW),
+            ("Paris is the capital of France. The Eiffel Tower is located there.", ReliabilityDecision.ALLOW),
             
             # Medium confidence, some uncertainty
-            ("Paris might be the capital of France, and I think the Eiffel Tower is probably there.", result.ReliabilityDecision.HEDGE),
+            ("Paris might be the capital of France, and I think the Eiffel Tower is probably there.", ReliabilityDecision.HEDGE),
             
             # Low confidence, no support
-            ("The capital of Mars is New York City and it has 10 billion people.", result.ReliabilityDecision.BLOCK),
+            ("The capital of Mars is New York City and it has 10 billion people.", ReliabilityDecision.BLOCK),
             
             # Question (should be handled gracefully)
-            ("What is the capital of France?", result.ReliabilityDecision.ALLOW),
+            ("What is the capital of France?", ReliabilityDecision.ALLOW),
         ]
         
         for response, expected_decision in test_cases:
@@ -235,7 +235,7 @@ class TestReliabilityEngine:
             
             # Verify basic structure
             assert result.score >= 0.0 and result.score <= 1.0
-            assert isinstance(result.decision, result.ReliabilityDecision)
+            assert isinstance(result.decision, ReliabilityDecision)
             
             # Log the actual vs expected for analysis
             print(f"Response: {response[:50]}...")
@@ -317,8 +317,7 @@ class TestReliabilityEngineIntegration:
     
     def test_end_to_end_workflow(self):
         """Test complete end-to-end workflow."""
-        # Create engine with default config
-        engine = engine.ReliabilityEngine()
+        rel_engine = engine.ReliabilityEngine()
         
         # Test realistic scenario
         response = "Based on the search results, Apple Inc. is headquartered in Cupertino, California and was founded by Steve Jobs in 1976."
@@ -334,20 +333,20 @@ class TestReliabilityEngineIntegration:
             "constraints": {"max_length": 200}
         }
         
-        result = engine.evaluate(response, context)
-        
+        eval_result = rel_engine.evaluate(response, context)
+
         # Verify complete workflow
-        assert 0.0 <= result.score <= 1.0
-        assert isinstance(result.decision, result.ReliabilityDecision)
-        assert result.explanation is not None
-        assert result.processing_time_ms > 0
-        assert result.processing_time_ms < 200.0  # Should be fast
-        
+        assert 0.0 <= eval_result.score <= 1.0
+        assert isinstance(eval_result.decision, ReliabilityDecision)
+        assert eval_result.explanation is not None
+        assert eval_result.processing_time_ms > 0
+        assert eval_result.processing_time_ms < 200.0
+
         # Should be reasonably confident for this well-supported response
-        assert result.score > 0.5
-        assert result.grounding > 0.5
-        
-        print(f"End-to-end test: Score={result.score:.3f}, Decision={result.decision}, Time={result.processing_time_ms:.2f}ms")
+        assert eval_result.score > 0.5
+        assert eval_result.grounding > 0.5
+
+        print(f"End-to-end test: Score={eval_result.score:.3f}, Decision={eval_result.decision}, Time={eval_result.processing_time_ms:.2f}ms")
 
 
 if __name__ == "__main__":

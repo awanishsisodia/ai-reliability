@@ -132,9 +132,10 @@ class RealTimeGrounding:
                 contradiction_score, contradiction_time = 0.0, 0.0
             else:
                 # Full evaluation path
-                # Step 8: Contradiction detection
+                # Step 8: Contradiction detection (pass pre-computed agreement_score
+                # so _is_complex_multi_source_fact avoids recomputing N² similarities)
                 contradiction_score, contradiction_time, should_block_contradiction = self._detect_contradictions(
-                    normalized_response, evidence_sources
+                    normalized_response, evidence_sources, agreement_score
                 )
                 
                 # Step 9: Final grounding score (separate relevance from support)
@@ -396,29 +397,33 @@ class RealTimeGrounding:
     def _detect_contradictions(
         self,
         response: str,
-        evidence_sources: List[str]
+        evidence_sources: List[str],
+        precomputed_agreement: float = -1.0,
     ) -> Tuple[float, float, bool]:
         """
         Detect contradictions between response and evidence.
-        
+
         Args:
             response: Normalized response text
             evidence_sources: List of evidence texts
-            
+            precomputed_agreement: Agreement score already computed upstream;
+                pass -1 to trigger a fresh computation (used only in tests).
+
         Returns:
             Tuple of (contradiction_score, processing_time, should_block)
         """
         timer = Timer("contradiction_detection")
         timer.start()
-        
+
         try:
             # Check for contradictions against all evidence
             should_block, max_contradiction_score, reason = self.contradiction_detector.should_block_based_on_contradiction(
                 response, evidence_sources
             )
-            
-            # Apply complexity != contradiction rule
-            if self._is_complex_multi_source_fact(response, evidence_sources):
+
+            # Apply complexity != contradiction rule, reusing the upstream agreement
+            # score to avoid a second O(N²) embedding computation.
+            if self._is_complex_multi_source_fact(response, evidence_sources, precomputed_agreement):
                 # Multiple sources agreeing = complexity, not contradiction
                 if max_contradiction_score < 0.8:  # Not undeniable contradiction
                     should_block = False
@@ -483,12 +488,12 @@ class RealTimeGrounding:
         response_lower = response.lower()
         if any(token in response_lower for token in negation_tokens):
             return False, ReliabilityDecision.HEDGE
-        
-        # Additional check: avoid short-circuit for anatomical/medical claims
-        anatomical_terms = ['brain', 'heart', 'chamber', 'ventricle', 'organ', 'body']
-        if any(term in response_lower for term in anatomical_terms):
+
+        # Skip short-circuit for terms that appear in known factual contradiction
+        # patterns — derived from ContradictionDetector so the two stay in sync.
+        if self.contradiction_detector.contains_sensitive_terms(response_lower):
             return False, ReliabilityDecision.HEDGE
-        
+
         # This is an obvious grounding case - allow it
         return True, ReliabilityDecision.ALLOW
     
@@ -635,43 +640,41 @@ class RealTimeGrounding:
             warnings=[],  # Will be filled if needed
         )
     
-    def _is_complex_multi_source_fact(self, response: str, evidence_sources: List[str]) -> bool:
+    def _is_complex_multi_source_fact(
+        self,
+        response: str,
+        evidence_sources: List[str],
+        precomputed_agreement: float = -1.0,
+    ) -> bool:
         """
-        Check if this represents a complex multi-source fact that should be treated as complexity, not contradiction.
-        
+        Return True when a response synthesises multiple mutually-consistent
+        evidence sources — a sign of legitimate complexity, not contradiction.
+
         Rules:
-        - Multiple sources (3+)
-        - High semantic similarity between sources (they agree)
-        - No direct negation in response
-        - Response contains multiple factual claims
-        
-        Args:
-            response: Response text
-            evidence_sources: List of evidence sources
-            
-        Returns:
-            True if this should be treated as complexity, not contradiction
+        - 3+ evidence sources
+        - High pairwise agreement between sources (they tell the same story)
+        - No explicit negation in the response
+
+        The domain-specific 'factual_indicators' word list was removed because it
+        was tuned to a single test case and misclassified unrelated multi-source
+        responses. Agreement score + source count are the correct structural signals.
         """
-        # Need multiple sources
         if len(evidence_sources) < 3:
             return False
-        
-        # Check for high agreement between evidence sources
-        agreement_score, _ = self._compute_evidence_agreement(evidence_sources)
-        if agreement_score < 0.7:  # Sources don't agree
+
+        # Reuse the upstream agreement score to avoid a second O(N²) embedding
+        # computation.  Fall back to computing it only when not provided (e.g. tests).
+        if precomputed_agreement >= 0.0:
+            agreement_score = precomputed_agreement
+        else:
+            agreement_score, _ = self._compute_evidence_agreement(evidence_sources)
+
+        if agreement_score < 0.7:
             return False
-        
-        # Check response has no explicit negation
+
         negation_tokens = ['not', 'no', 'never', 'without', 'cannot', "doesn't", "don't", "isn't", "aren't"]
         response_lower = response.lower()
-        if any(token in response_lower for token in negation_tokens):
-            return False
-        
-        # Check response contains multiple factual indicators
-        factual_indicators = ['year', 'date', 'ended', 'began', 'war', 'world', 'after', 'during', 'period']
-        factual_count = sum(1 for indicator in factual_indicators if indicator in response_lower)
-        
-        return factual_count >= 2  # Multiple factual claims
+        return not any(token in response_lower for token in negation_tokens)
     
     def _safe_fallback(
         self,

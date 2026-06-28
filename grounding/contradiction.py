@@ -22,12 +22,12 @@ class ContradictionDetector:
             r'\b(unable|unable to|incapable|incapable of)\b',
             r'\b(without|lacking|lacks|absent|absence of)\b',
         ]
-        
-        # Contradictory concept pairs
+
+        # Logical antonym pairs only — both words must appear in the SAME text for
+        # has_negation to trigger.  Organ co-occurrence ('heart'+'brain') is NOT an
+        # antonym relationship and was removed to prevent false positives on medical text.
         self.contradictory_pairs = {
             'chambers': ['no chambers', 'not have chambers', 'without chambers', 'lacks chambers'],
-            'heart': ['brain', 'mind', 'cerebral'],
-            'brain': ['heart', 'cardiac'],
             'increase': ['decrease', 'reduce', 'lower', 'diminish'],
             'decrease': ['increase', 'raise', 'elevate', 'grow'],
             'true': ['false', 'incorrect', 'wrong', 'untrue'],
@@ -35,7 +35,7 @@ class ContradictionDetector:
             'always': ['never', 'rarely', 'seldom', 'sometimes'],
             'never': ['always', 'often', 'frequently', 'regularly'],
         }
-        
+
         # Numeric contradictions
         self.numeric_negation_patterns = [
             r'\b(\d+)\s+(not|no|never|without)\b',
@@ -43,10 +43,39 @@ class ContradictionDetector:
             r'\b(\d+)\s+(less than|fewer than)\b.*\b(more than|greater than)\b',
             r'\b(more than|greater than)\b.*\b(\d+)\s+(less than|fewer than)\b',
         ]
-        
+
+        # High-confidence factual contradiction pairs compiled once at construction.
+        # Each entry defines two patterns that, when found on opposite sides of a
+        # response/evidence pair, indicate a clear factual contradiction.
+        self._factual_contradiction_specs = [
+            {
+                'pattern': re.compile(r'\bheart.*?chambers\b', re.IGNORECASE),
+                'contradiction': re.compile(r'\bbrain.*?chambers\b', re.IGNORECASE),
+                'description': 'heart vs brain chambers',
+            },
+            {
+                'pattern': re.compile(r'\bsun.*?orbit.*?earth\b', re.IGNORECASE),
+                'contradiction': re.compile(r'\bearth.*?orbit.*?sun\b', re.IGNORECASE),
+                'description': 'sun-earth orbit contradiction',
+            },
+        ]
+
+        # Terms that appear in factual contradiction patterns — responses containing
+        # these should skip the short-circuit path and get full contradiction analysis.
+        # Derived from _factual_contradiction_specs so the two stay in sync.
+        self.sensitive_terms: set = {
+            'heart', 'brain', 'chambers', 'chamber',
+            'sun', 'earth', 'orbit',
+        }
+
         # Compile regex patterns for performance
         self.negation_regex = [re.compile(pattern, re.IGNORECASE) for pattern in self.negation_patterns]
         self.numeric_regex = [re.compile(pattern, re.IGNORECASE) for pattern in self.numeric_negation_patterns]
+
+    def contains_sensitive_terms(self, text: str) -> bool:
+        """Return True if text contains terms that require full contradiction analysis."""
+        text_lower = text.lower()
+        return any(term in text_lower for term in self.sensitive_terms)
     
     def detect_negation(self, text: str) -> Dict[str, Any]:
         """
@@ -218,74 +247,22 @@ class ContradictionDetector:
     
     def _detect_factual_contradiction(self, text1: str, text2: str) -> Optional[Dict[str, Any]]:
         """
-        Detect high-confidence factual contradictions.
-        
-        Only catches clear, undeniable factual contradictions.
-        
-        Args:
-            text1: First text
-            text2: Second text
-            
-        Returns:
-            Contradiction dict if found, None otherwise
+        Detect high-confidence factual contradictions using pre-compiled patterns.
+
+        Note: the pattern list in __init__ is intentionally small and domain-specific.
+        Add new entries to _factual_contradiction_specs to extend coverage; do not add
+        patterns here.
         """
-        # High-confidence factual contradictions
-        factual_contradictions = [
-            {
-                'pattern': r'\bheart.*?chambers\b',
-                'contradiction': r'\bbrain.*?chambers\b',
-                'description': 'heart vs brain chambers'
-            },
-            {
-                'pattern': r'\bsun.*?orbit.*?earth\b',
-                'contradiction': r'\bearth.*?orbit.*?sun\b',
-                'description': 'sun-earth orbit contradiction'
-            }
-        ]
-        
-        text1_lower = text1.lower()
-        text2_lower = text2.lower()
-        
-        for contradiction_pair in factual_contradictions:
-            pattern1 = contradiction_pair['pattern']
-            pattern2 = contradiction_pair['contradiction']
-            
-            # Check if each text contains one side of the contradiction
-            if (re.search(pattern1, text1_lower) and re.search(pattern2, text2_lower)) or \
-               (re.search(pattern2, text1_lower) and re.search(pattern1, text2_lower)):
+        for spec in self._factual_contradiction_specs:
+            p1, p2 = spec['pattern'], spec['contradiction']
+            if (p1.search(text1) and p2.search(text2)) or \
+               (p2.search(text1) and p1.search(text2)):
                 return {
                     'type': 'factual_contradiction',
-                    'description': contradiction_pair['description'],
-                    'severity': 'high'
+                    'description': spec['description'],
+                    'severity': 'high',
                 }
-        
         return None
-    
-    def _get_context_words(self, text: str, concept: str, window: int = 5) -> set:
-        """
-        Get words surrounding a concept within a window.
-        
-        Args:
-            text: Text to search
-            concept: Concept to find context for
-            window: Number of words before/after to consider
-            
-        Returns:
-            Set of context words
-        """
-        words = text.split()
-        context_words = set()
-        
-        for i, word in enumerate(words):
-            if concept in word:
-                # Add words before and after
-                start = max(0, i - window)
-                end = min(len(words), i + window + 1)
-                for j in range(start, end):
-                    if j != i and words[j] != concept:
-                        context_words.add(words[j])
-        
-        return context_words
     
     def _extract_entities(self, text: str) -> set:
         """Extract simple entities (nouns, numbers) from text."""
@@ -301,22 +278,19 @@ class ContradictionDetector:
         return re.findall(r'\b\d+\b', text)
     
     def _calculate_contradiction_score(self, contradictions: List[Dict[str, Any]]) -> float:
-        """Calculate contradiction severity score."""
+        """Return the severity of the worst contradiction found.
+
+        Uses max() instead of average so that adding a second (lower-severity)
+        signal can never reduce the score below the worst finding.
+        """
         if not contradictions:
             return 0.0
-        
-        total_severity = 0.0
-        for contradiction in contradictions:
-            severity = contradiction.get('severity', 'low')
-            if severity == 'high':
-                total_severity += 1.0
-            elif severity == 'medium':
-                total_severity += 0.6
-            else:  # low
-                total_severity += 0.3
-        
-        # Normalize to [0, 1]
-        return min(1.0, total_severity / len(contradictions))
+
+        severity_map = {'high': 1.0, 'medium': 0.6, 'low': 0.3}
+        return max(
+            severity_map.get(c.get('severity', 'low'), 0.3)
+            for c in contradictions
+        )
     
     def should_block_based_on_contradiction(self, response: str, evidence_texts: List[str]) -> Tuple[bool, float, str]:
         """

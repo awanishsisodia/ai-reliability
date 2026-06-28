@@ -10,7 +10,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
 
 
 class ReliabilityDecision(str, Enum):
@@ -38,36 +38,16 @@ class ReliabilityExplanation(BaseModel):
         le=1.0,
         description="Fraction of sentences with adequate support"
     )
-    
-    @field_validator('coverage')
-    @classmethod
-    def clamp_coverage(cls, v: float) -> float:
-        """Clamp coverage to [0,1] range to handle floating-point precision."""
-        return max(0.0, min(1.0, v))
-    
     mean_support: float = Field(
         ge=0.0,
         le=1.0,
         description="Average semantic support across all sentences"
     )
-    
-    @field_validator('mean_support')
-    @classmethod
-    def clamp_mean_support(cls, v: float) -> float:
-        """Clamp mean_support to [0,1] range to handle floating-point precision."""
-        return max(0.0, min(1.0, v))
-    
     agreement_score: float = Field(
         ge=0.0,
         le=1.0,
         description="Agreement score between evidence sources"
     )
-    
-    @field_validator('agreement_score')
-    @classmethod
-    def clamp_agreement_score(cls, v: float) -> float:
-        """Clamp agreement_score to [0,1] range to handle floating-point precision."""
-        return max(0.0, min(1.0, v))
     processing_time_ms: float = Field(
         ge=0.0,
         description="Total processing time in milliseconds"
@@ -85,24 +65,28 @@ class ReliabilityExplanation(BaseModel):
         description="Any warnings or alerts generated during evaluation"
     )
 
-    @field_validator('coverage')
+    # Single pre-validation clamp for all unit floats — must run before ge/le constraints.
+    @field_validator('coverage', 'mean_support', 'agreement_score', mode='before')
     @classmethod
-    def validate_coverage(cls, v: float, info) -> float:
-        """Validate coverage is consistent with sentence scores."""
-        if info.data and 'sentence_scores' in info.data:
-            sentence_scores = info.data['sentence_scores']
-            if sentence_scores:
-                supported_count = sum(
-                    1 for score in sentence_scores
-                    if score.get('support', 0.0) > 0.7  # Threshold for "supported"
+    def clamp_unit_float(cls, v: float) -> float:
+        """Clamp to [0,1] before constraint checking to absorb floating-point drift."""
+        return max(0.0, min(1.0, float(v)))
+
+    @model_validator(mode='after')
+    def validate_coverage_consistency(self) -> 'ReliabilityExplanation':
+        """Cross-check coverage against sentence_scores after all fields are set."""
+        if self.sentence_scores:
+            supported_count = sum(
+                1 for s in self.sentence_scores
+                if s.get('support', 0.0) > 0.7
+            )
+            expected = supported_count / len(self.sentence_scores)
+            if abs(self.coverage - expected) > 0.05:
+                raise ValueError(
+                    f"Coverage {self.coverage:.3f} doesn't match sentence_scores "
+                    f"(expected {expected:.3f})"
                 )
-                expected_coverage = supported_count / len(sentence_scores)
-                # Allow small tolerance for floating point differences
-                if abs(v - expected_coverage) > 0.05:
-                    raise ValueError(
-                        f"Coverage {v:.3f} doesn't match expected {expected_coverage:.3f}"
-                    )
-        return v
+        return self
 
 
 class ReliabilityResult(BaseModel):
@@ -176,13 +160,8 @@ class ReliabilityResult(BaseModel):
         extra="forbid"
     )
 
-    @field_validator('decision')
-    @classmethod
-    def validate_decision_type(cls, v: ReliabilityDecision, info) -> ReliabilityDecision:
-        """Ensure decision is a valid ReliabilityDecision enum value."""
-        if not isinstance(v, ReliabilityDecision):
-            raise ValueError(f"Decision must be a ReliabilityDecision enum, got {type(v)}")
-        return v
+    # No custom decision validator needed: Pydantic coerces strings to ReliabilityDecision
+    # and rejects unknown values before any field_validator runs.
 
     def is_safe_to_show(self) -> bool:
         """Check if response is safe to display to user."""

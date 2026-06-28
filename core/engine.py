@@ -86,8 +86,9 @@ class ReliabilityEngine:
         Returns:
             Complete reliability evaluation result
         """
-        budget_ms = self.config.grounding.max_latency_ms
-        
+        if budget_ms is None:
+            budget_ms = self.config.grounding.max_latency_ms
+
         with latency_budget(budget_ms, "reliability_evaluation"):
             return self._evaluate_with_timing(response, context, history)
     
